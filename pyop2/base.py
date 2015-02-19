@@ -3696,6 +3696,9 @@ class JITModule(Cached):
         if configuration['papi_flops'] is not None:
             key += ((configuration['papi_flops'],))
 
+        if configuration['iaca'] is not None:
+            key += ((configuration['iaca'],))
+
         if configuration['times'] is not None:
             key += ((configuration['times'],))
 
@@ -3843,6 +3846,7 @@ class ParLoop(LazyComputation):
                 unique_args.append(arg1)
             else:
                 coords_exist = True
+        self._unique_args = unique_args
         # VBW: Valuable BW
         vol = 0.0
         # MVBW: Maximal Valuable BW which counts the volume twice for INC and WRITE
@@ -4119,6 +4123,11 @@ class ParLoop(LazyComputation):
     def is_layered(self):
         """Flag which triggers extrusion"""
         return self._is_layered
+
+    @property
+    def unique_args(self):
+        """Return a list of unique args."""
+        return self._unique_args
 
     @property
     def iteration_region(self):
