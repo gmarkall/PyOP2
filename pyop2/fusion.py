@@ -741,9 +741,45 @@ class Inspector(Cached):
         where ``dat_1_1 == dat_2_1`` and, possibly (but not necessarily),
         ``it_space_1 != it_space_2``, can be hardly fused. Note, in fact, that
         the presence of ``INC`` does not imply a real WAR dependency, because
-        increments are associative.
-        This requires interfacing with the SLOPE library."""
-        pass
+        increments are associative."""
+
+        def has_raw_or_war(loop1, loop2):
+            # Note that INC after WRITE is a specil case of RAW dependency since
+            # INC cannot take place before WRITE.
+            return loop2.reads & loop1.writes or loop2.writes & loop1.reads or \
+                loop1.incs & (loop2.writes - loop2.incs) or \
+                loop2.incs & (loop1.writes - loop1.incs)
+
+        def fuse(base_loop, loop_chain):
+            """Try to fuse one of the loops in ``loop_chain`` with ``base_loop``."""
+            for loop in loop_chain:
+                if has_raw_or_war(loop, base_loop):
+                    # Can't fuse across loops preseting RAW or WAR dependencies
+                    return
+                if loop.it_space == base_loop.it_space:
+                    warning("Ignoring unexpected sequence of loops in loop fusion")
+                    continue
+                # Hard fusion potentially doable provided that we own a map between
+                # the iteration spaces involved
+                maps = [a.map for a in loop.args if a._is_indirect] + \
+                       [a.map for a in base_loop.args if a._is_indirect]
+                maps += [m.factors for m in maps if hasattr(m, 'factors')]
+                maps = list(set(flatten(maps)))
+                set1, set2 = base_loop.it_space.iterset, loop.it_space.iterset
+                fusion_map = [m for m in maps if set1 == m.iterset and set2 == m.toset]
+                if fusion_map:
+                    return (base_loop, loop, fusion_map)
+                fusion_map = [m for m in maps if set1 == m.toset and set2 == m.iterset]
+                if fusion_map:
+                    return (loop, base_loop, fusion_map)
+                continue
+            return
+
+        fusible_loops = None
+        for i, loop in enumerate(self._loop_chain, 1):
+            fusible_loops = fuse(loop, self._loop_chain[i:])
+            if fusible_loops:
+                break
 
     def _tile(self):
         """Tile consecutive loops over different iteration sets characterized
